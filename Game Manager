@@ -1,0 +1,590 @@
+using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+//tried using to sort the array of gameobjects (shrines).
+using System.Linq; 
+
+public class GameManager : MonoBehaviour {
+
+	public string[] toppingsMenu;
+	public string[] toppingsIAte;
+//	public string[] toppingsYouHave;
+	public List<string> toppingsYouHave;
+	public List<string> toppingsIWant;
+	public List<string> toppingsEaten;
+
+	public int numberOfToppings; //this is going to be difficulty.
+	public int maxToppingsOnDog;
+	public int score;
+	private string displayWants = "";
+	private string displayHas = "";
+	private string displayAte = "";
+
+	//changing these to arrays for multi-shrine support (break alert):
+	public List<GameObject> guyShrines;
+	public List<GameObject> shrineRamps;
+	public int shrineToBoost; //going to be fed by other class to determine which shrine to increase in height.
+
+	public int timesFed, perfectFeeds, deltaToppings, overEaten, underEaten, wrongFeeds;//for results page
+	public string timesFedTally;
+	public bool perfectBlink, speedBoost;
+	public float perfectBlinkTimer, perfectBlinkTime;
+	public float[] shrineY, rampY;
+	private bool showCravez;
+	public float cravezTimer;
+
+	private float recipeButtX, recipeButtY, recipeButtZ;
+	private float equipButtX, equipButtY, equipButtZ;
+	public Button recipeButt, equipButt, timerButt, touchpadButt;
+
+	public Canvas[] inGameCanvases;
+	public Sprite[] joystickSprites;
+	public Image[] joystickImages;
+	public Slider[] sliders;
+	public Image camLeft;
+	public Image camRight;
+	public float dropDownLength;
+	public GameObject player1;
+	public Player1 playerScript;
+
+	public int currentScene;
+	//clock vars:
+	public float roundTime, totalTime, timeElapsed;
+	public float timeBonus;
+	private string formattedFinalTime;
+
+	//tutorial vars:
+	public bool tutorialOn;
+	public float tutorialTime;
+	public float tutorialTimer;
+	public int tutorialNum;
+
+	//results vars:
+	public Text[] resultsTxts;
+
+	public AudioSource gmSound;
+	public AudioClip perfect, tooMuch, tooLittle, wrongFood, stepBack, comingSoon, easyPeesy;
+	public Text[] inGameTexts;
+
+	public bool debugOn; //for testing stuffs
+	public Vector3 debugRevivePos;
+
+	//for locking new content:
+	public bool zenModeUnlocked;
+
+	//checking controllers:
+	public bool xboxController;
+	public bool ps4Controller;
+	public string currentController;
+
+    //easy mode controls:
+    public bool easyMode;
+
+	static public GameManager GM;
+
+	void Awake(){
+		if (GM == null) {
+			DontDestroyOnLoad(gameObject);
+			GM = this;
+		} else if (GM != this) {
+			Destroy (gameObject);
+		}
+	}
+    // Use this for initialization
+    void Start() {
+        easyMode = false;
+        numberOfToppings = 1;
+        currentScene = SceneManager.GetActiveScene().buildIndex;
+        recipeButtX = recipeButt.transform.position.x;
+        recipeButtY = recipeButt.transform.position.y;
+        recipeButtZ = recipeButt.transform.position.z;
+        equipButtX = equipButt.transform.position.x;
+        equipButtY = equipButt.transform.position.y;
+        equipButtZ = equipButt.transform.position.z;
+        tutorialOn = true;
+        inGameCanvases = GetComponentsInChildren<Canvas>();
+        sliders = inGameCanvases[0].GetComponentsInChildren<Slider>();
+        gmSound = GetComponent<AudioSource>();
+        resultsTxts = inGameCanvases[3].GetComponentsInChildren<Text>();
+        inGameTexts = inGameCanvases[0].GetComponentsInChildren<Text>();
+        dropDownLength = Screen.height / 3;
+        //check if joysticks are connected.  If so, assign first one as current controller.
+        foreach (string joysticks in Input.GetJoystickNames())
+        {
+            if (joysticks != null)
+            {
+                currentController = Input.GetJoystickNames()[0].ToLower();
+                Debug.Log(currentController);
+            }
+        }
+		if (currentController == "controller (xbox 360 for windows)" || currentController == "controller (xbox 360 wireless receiver for windows)" || currentController == "controller (xbox one for windows)") {
+			xboxController = true;
+		} else {
+			xboxController = false;
+		}
+	} 
+	
+//	// Update is called once per frame
+	void FixedUpdate () {
+		currentScene = SceneManager.GetActiveScene().buildIndex;
+		 
+
+        //debug cheats:
+		if (debugOn) {
+			if (Input.GetButtonDown ("Square")) {
+				toppingsYouHave.Add ("Apple");
+			}
+			if (Input.GetButtonDown ("X")) {
+				toppingsYouHave.Add ("Eggplant");
+			}
+			if (Input.GetButtonDown ("Circle")) {
+				toppingsYouHave.Add ("Onion");
+			}
+			if (Input.GetButtonDown ("Triangle")) {
+				toppingsYouHave.Add ("Pepper");
+			}
+			if (Input.GetButtonDown ("Touchpad")) {
+				toppingsYouHave.Clear ();
+			}
+
+		}
+		//if it's not the title or the results:
+		if (currentScene != 0 && currentScene !=5) {
+			//if it's not mode select:
+			if (currentScene != 1) {
+				timeElapsed += Time.deltaTime;
+				int finalMinutes = Mathf.FloorToInt (timeElapsed / 60f);
+				int finalSeconds = Mathf.FloorToInt (timeElapsed - finalMinutes * 60);
+				formattedFinalTime = string.Format ("{0:0}:{1:00}", finalMinutes, finalSeconds);
+
+			}
+
+			if (Input.GetAxis ("Vertical") == 0 && Input.GetAxis ("Vertical2") == 0 && Input.GetAxis("xVertical2") == 0) {
+				camLeft.enabled = true;
+				camRight.enabled = true;
+
+				camLeft.CrossFadeAlpha (1, 1, false);
+				camRight.CrossFadeAlpha (1, 1, false);
+			} else {
+				camLeft.CrossFadeAlpha (0, 1, false);
+				camRight.CrossFadeAlpha (0, 1, false);
+			}
+
+			inGameCanvases[0].enabled = true;
+			inGameCanvases [3].enabled = false;
+			if (showCravez) {
+				cravezTimer+= Time.deltaTime;
+				if (cravezTimer > 2) {
+					showCravez = false;
+					cravezTimer = 0;
+				}
+			}
+			if (Input.GetButton ("L1") || showCravez) {
+				//hacky hardcoding for now:
+				recipeButt.transform.position = new Vector3 (recipeButt.transform.position.x, (recipeButtY - dropDownLength), recipeButt.transform.position.z);
+				camLeft.enabled = false;
+			} else {
+				recipeButt.transform.position = new Vector3 (recipeButtX, recipeButtY, recipeButtZ);
+			}
+			if (Input.GetButton ("R1")) {
+				//hacky hardcoding for now:
+				equipButt.transform.position = new Vector3 (equipButt.transform.position.x, (equipButtY - dropDownLength), equipButt.transform.position.z);
+				camRight.enabled = false;
+			} else {
+				equipButt.transform.position = new Vector3 (equipButtX, equipButtY, equipButtZ);
+			}
+
+			//bring up the map:
+			if (xboxController) {
+				if (Input.GetButton ("xTouchpad")) {
+					inGameCanvases [2].enabled = true;
+				} else {
+					inGameCanvases [2].enabled = false;
+				}
+			}else if (Input.GetButton ("Touchpad")) {
+				inGameCanvases [2].enabled = true;
+			} else {
+				inGameCanvases [2].enabled = false;
+			}
+
+			//show touchpad = map if no movement input && not tutorial:
+			if (!tutorialOn) {
+				if (Input.GetAxis ("Vertical") == 0 && Input.GetAxis ("Vertical2") == 0 && Input.GetAxis("xVertical2") == 0) {
+					touchpadButt.image.CrossFadeAlpha (1, 3, false);
+				} else {
+					touchpadButt.image.CrossFadeAlpha (0.2f, 1, false);
+				}
+			} else {
+				touchpadButt.image.enabled = false;
+			}
+
+			//respawn:
+			if (Input.GetButton ("L3") && Input.GetButton ("R3") || Input.GetButton("xL3") && Input.GetButton("xR3")) {
+				player1 = GameObject.FindGameObjectWithTag ("Player");
+				playerScript = player1.GetComponent<Player1> ();
+				playerScript.isGrounded = false;
+				Revive (player1);
+			}
+
+			//secret reset:
+			if (Input.GetButton ("Square") && Input.GetButton ("X") && Input.GetButton ("Circle") && Input.GetButton ("Triangle") && Input.GetButton ("PSButton")) {
+				ResetValues ();
+				SceneManager.LoadScene (0);
+			}
+
+			//blink perfect/overeat:
+			if (perfectBlink) {
+				perfectBlinkTime += Time.deltaTime;
+				if (perfectBlinkTime < perfectBlinkTimer) {
+					if (perfectBlinkTime % 1f < 0.6f) {
+						inGameTexts [3].enabled = true;
+					} else {
+						inGameTexts [3].enabled = false;
+					}
+				} else {
+					inGameTexts [3].enabled = false;
+					perfectBlink = false;
+					perfectBlinkTime = 0;
+				}
+			}
+
+
+
+			//blink tutorial till you get it into his mouth:
+			if (tutorialOn) {
+				tutorialTime += Time.deltaTime;
+				if (currentScene == 1) {
+					inGameCanvases [1].enabled = true;
+				} else {
+					touchpadButt.image.enabled = true;
+				}
+				if (currentScene == 4) { //if in Zen Mode
+					timerButt.GetComponentInChildren<Text> ().text = "Time Remaining:\nZen Mode\n(Fall off to End it all)";
+				} else {
+					timerButt.GetComponentInChildren<Text> ().text = "Time Remaining:\nMode Select";
+				}
+				if (tutorialTime < tutorialTimer) {
+					if (tutorialNum == 0) {
+						inGameCanvases [1].GetComponentInChildren<Text> ().text = "Keep Joysticks Together\nTo Move";
+						if (Time.time % 2f > 0.5f) {
+							joystickImages [0].sprite = joystickSprites [2];
+							joystickImages [1].sprite = joystickSprites [2];
+						} else {
+							joystickImages [0].sprite = joystickSprites [1];
+							joystickImages [1].sprite = joystickSprites [1];
+						}
+					} else if (tutorialNum == 1) {
+						inGameCanvases [1].GetComponentInChildren<Text> ().text = "Split Joysticks Apart\nTo Turn";
+						if (Time.time % 2f > 0.5f) {
+							joystickImages [0].sprite = joystickSprites [1];
+							joystickImages [1].sprite = joystickSprites [2];
+						} else {
+							joystickImages [0].sprite = joystickSprites [2];
+							joystickImages [1].sprite = joystickSprites [1];
+						}
+					} else if (tutorialNum == 2) {
+						inGameCanvases [1].GetComponentInChildren<Text> ().text = "Click 'em In\nTo Respawn";
+						if (Time.time % 2f > 0.5f) {
+							joystickImages [0].sprite = joystickSprites [0];
+							joystickImages [1].sprite = joystickSprites [0];
+						} else {
+							joystickImages [0].sprite = joystickSprites [3];
+							joystickImages [1].sprite = joystickSprites [3];
+						}
+					} else if (tutorialNum == 3) {
+						inGameCanvases [1].GetComponentInChildren<Text> ().text = "Collect Toppings\nFeed The God";
+					} else if (tutorialNum == 4) {
+						tutorialNum = 0;//keep cycling tutorial until you get into The Guy's mouth.
+					}
+
+				} else {
+					tutorialNum++;
+					tutorialTime = 0;
+				}
+			} else {
+				inGameCanvases [1].enabled = false;
+				if (roundTime <= 0) {
+					UpdateResults ();
+					SceneManager.LoadScene (5);
+				}
+				if (currentScene == 4) { //if it's zen:
+					timerButt.GetComponentInChildren<Text> ().text = "Time Remaining:\nZen Mode\n(Fall off to End it all)";
+				} else {
+					roundTime -= Time.deltaTime;
+					int minutes = Mathf.FloorToInt (roundTime / 60f);
+					int seconds = Mathf.FloorToInt (roundTime - minutes * 60);
+					string formattedTime = string.Format ("{0:0}:{1:00}", minutes, seconds);
+					timerButt.GetComponentInChildren<Text> ().text = "Time Remaining:\n" + formattedTime;
+					sliders [0].value = roundTime;
+//					sliders [1].value = score;
+
+					//make the timer only show every 10 seconds:
+					if (roundTime % 10f < 0.5f) {
+//					timerButt.image.CrossFadeAlpha (0, 2, false);
+						timerButt.gameObject.SetActive (true);
+					} else {
+//					timerButt.image.CrossFadeAlpha (1, 1, false);
+						timerButt.gameObject.SetActive (false);
+					}
+				}
+				}
+			} else {
+			//no time for for loops.
+			inGameCanvases[0].enabled = false;
+			inGameCanvases [1].enabled = false;
+			inGameCanvases [2].enabled = false;
+			inGameCanvases [3].enabled = false;
+			//show results
+			if (currentScene == 5) {
+				inGameCanvases [3].enabled = true;
+			}
+			if (Input.GetButtonDown ("Start") || Input.GetButtonDown("xStart")) {
+				if (currentScene == 0) {
+                   //easy mode activation:
+                   if(Input.GetButton("R1") && Input.GetButton("L1"))
+                    {
+                        easyMode = true;
+                        gmSound.clip = easyPeesy;
+                        gmSound.Play();
+                        inGameTexts[3].text = "Easy Mode Activated!";
+                        perfectBlink = true;
+                    }
+					SceneManager.LoadScene (1);
+				} else if (currentScene == 5) {
+					ResetValues ();
+					SceneManager.LoadScene (0);
+				}
+//				inGameCanvases [1].enabled = true;
+
+			}
+		}
+	}
+
+
+
+
+	public void JudgeToppings(){
+		FindItems ();
+		timesFed++;
+		timesFedTally += "I ";
+
+		deltaToppings = toppingsIWant.Count;
+		//compare lists and change delta toppings accordingly.
+		for (int i = 0; i < toppingsYouHave.Count; i++) {
+			deltaToppings--;
+			toppingsEaten.Add (toppingsYouHave [i]);//update what the guy has eaten for results
+				if (toppingsIWant.Contains (toppingsYouHave [i])) {
+//				Debug.Log ("YUM! " + toppingsYouHave [i]);
+
+					toppingsIWant.Remove (toppingsYouHave [i]);//remove from want list
+					//toppingsYouHave.Remove (toppingsYouHave [i]);//remove from have list
+					score += 10;
+				}
+		}
+		if (deltaToppings == 0) {//if you got 'em all
+			if (toppingsIWant.Count == 0) {
+				perfectFeeds++;
+				speedBoost = true;
+				gmSound.clip = perfect;
+				gmSound.Play ();
+				inGameTexts [3].text = "Perfect Feed!";
+				perfectBlink = true;
+				if (!tutorialOn) {
+					roundTime += 30;//get a half minute back.
+				}
+			} else {
+				wrongFeeds++;
+				gmSound.clip = wrongFood;
+				gmSound.Play ();
+				inGameTexts [3].text = "Not Quite Right!";
+				perfectBlink = true;
+			}
+
+		}
+		if (deltaToppings< 0) {				//tell user they missed an ingredient.
+			shrineY[shrineToBoost] += 10;
+			rampY[shrineToBoost] += 10;
+			overEaten++;
+			gmSound.clip = tooMuch;
+			gmSound.Play ();
+			inGameTexts[3].text = "Too Much, Compadre!";
+			perfectBlink = true;
+			guyShrines[shrineToBoost].transform.position = new Vector3 (guyShrines[shrineToBoost].transform.position.x, shrineY[shrineToBoost], guyShrines[shrineToBoost].transform.position.z);
+			shrineRamps[shrineToBoost].transform.position = new Vector3 (shrineRamps[shrineToBoost].transform.position.x, rampY[shrineToBoost], shrineRamps[shrineToBoost].transform.position.z);
+		}
+		if (deltaToppings> 0) {				//tell user they missed an ingredient.
+			shrineY[shrineToBoost] += 10;
+			rampY[shrineToBoost] += 10;
+			underEaten++;
+			gmSound.clip = tooLittle;
+			gmSound.Play ();
+			inGameTexts[3].text = "Something's Missing!";
+			perfectBlink = true;
+			guyShrines[shrineToBoost].transform.position = new Vector3 (guyShrines[shrineToBoost].transform.position.x, shrineY[shrineToBoost], guyShrines[shrineToBoost].transform.position.z);
+			shrineRamps[shrineToBoost].transform.position = new Vector3 (shrineRamps[shrineToBoost].transform.position.x, rampY[shrineToBoost], shrineRamps[shrineToBoost].transform.position.z);
+		}
+	
+		if (toppingsIWant.Count > 0) {
+			toppingsIWant.Clear ();//if there's anything left, clear it before asking for more
+		}
+		//ask for toppings = to numberOfToppings:
+		for (int i = 0; i < numberOfToppings; i++) {
+			toppingsIWant.Add (toppingsMenu [Random.Range (0, toppingsMenu.Length)]);
+		}
+		//ask for more and more toppings craved up to maximum (5 atm):
+		if (perfectFeeds > 0 && numberOfToppings < maxToppingsOnDog) { //don't start asking for more until player gets one perfect feed
+			numberOfToppings++;
+		}
+
+		//show cravings for a few seconds:
+		showCravez = true;
+
+		displayWants = "";//clear the wanted list before repopulating it.
+		foreach (string str in toppingsIWant) {
+			displayWants = displayWants.ToString() + str.ToString() + "\n";
+		}
+		recipeButt.gameObject.GetComponentInChildren<Text> ().text = displayWants+"\nL1 = TBud Cravingz";
+		toppingsYouHave.Clear (); //clear remainder of items before update
+		UpdateEquipment ();
+
+			
+	}
+
+	public void Revive(GameObject player){
+
+
+		//		Debug.Log ("You are one delicious dog! I'd dig you even more if you had some " + toppingsIWant[0]);
+
+		FindItems ();
+		playerScript = player1.GetComponent<Player1> ();
+		playerScript.isGrounded = false;
+		debugRevivePos = new Vector3 (3, shrineY[shrineToBoost]+30, 308);
+		if (debugOn) {
+			player.transform.position = debugRevivePos;
+		} else {
+			player.transform.position = gameObject.transform.position;
+		}
+
+		//turn tutorial off if it's not mode select:
+		if (currentScene != 1) {
+			tutorialOn = false;
+			touchpadButt.image.enabled = true;
+		}
+
+	}
+
+	public void FindItems(){
+		player1 = GameObject.FindGameObjectWithTag ("Player");
+		if (guyShrines.Count ==0) {
+			guyShrines.AddRange (GameObject.FindGameObjectsWithTag ("Shrine").OrderBy(go=>go.name).ToList());
+			shrineRamps.AddRange (GameObject.FindGameObjectsWithTag ("Ramp").OrderBy(go=>go.name).ToList());
+			for (int i = 0; i < guyShrines.Count; i++) {
+				shrineY[i] = guyShrines [i].transform.position.y;
+			}
+			for (int i = 0; i < shrineRamps.Count; i++) {
+				rampY [i] = shrineRamps [i].transform.position.y;
+			}
+		}//only do it to populate the list the first time.  don't keep adding shrines.
+	
+	}
+
+	public void UpdateEquipment(){
+		displayHas = "";//clear the has list before repopulating it.
+		foreach (string str in toppingsYouHave) {
+			displayHas = displayHas.ToString () + str.ToString () + "\n";
+		}
+		if (toppingsYouHave.Count > 0) {
+			equipButt.gameObject.GetComponentInChildren<Text> ().text = displayHas + "\nR1 = Dawg Topz";
+		} else {
+			equipButt.gameObject.GetComponentInChildren<Text> ().text = displayHas + "You are nude\n\nR1 = Dawg Topz";
+		}
+	}
+
+	public void UpdateResults(){
+		//0=times fed; 1=perfect feeds; 2=ingredients; 3 = under; 4 = over
+		resultsTxts[0].text = "" + timesFed;
+		resultsTxts [1].text = "" + perfectFeeds;
+		resultsTxts [3].text = "" + underEaten;
+		resultsTxts [4].text = "" + overEaten;
+		resultsTxts [5].text = "Total Time\n" + formattedFinalTime;
+		displayAte = 	""; 
+		foreach (string str in toppingsEaten) {
+			displayAte = displayAte.ToString () + str.ToString () + "\t";
+		}
+		resultsTxts [2].text = displayAte;
+	}
+	 
+	public void ResetValues(){
+		guyShrines.Clear ();
+		shrineRamps.Clear ();
+		System.Array.Clear (rampY, 0, rampY.Length);
+		System.Array.Clear (shrineY, 0, shrineY.Length);
+		toppingsEaten.Clear ();
+		toppingsIWant.Clear();
+		toppingsYouHave.Clear ();
+		System.Array.Clear (toppingsIAte, 0, toppingsIAte.Length);
+		displayWants = "";
+		displayHas = "";
+		displayAte = "";
+		roundTime = totalTime;
+		timeElapsed = 0;
+		score = 0;
+		perfectFeeds = 0;
+		timesFed = 0;
+		timesFedTally = "";
+		numberOfToppings = 1;
+		sliders[0].value = roundTime;
+//		sliders [1].value = score;
+		recipeButt.gameObject.GetComponentInChildren<Text> ().text = displayWants+"I want you just the way you are\n\nL1 = TBud Cravingz";
+		equipButt.gameObject.GetComponentInChildren<Text> ().text = displayHas + "You are nude\n\nR1 = Dawg Topz";
+		tutorialOn = true;
+//		SceneManager.LoadScene (0);
+	}
+
+}
+
+
+/*
+ * 
+ * attributions
+ * 
+ * Diner:
+ * http://creativecommons.org/licenses/by-sa/3.0/
+ * https://da.wikipedia.org/wiki/Diner#/media/File:Summit_diner_1024x658.jpg
+ * 
+ * Winter:
+ * https://commons.wikimedia.org/wiki/File:Snow_Scene_at_Shipka_Pass_1.JPG
+ * Attribution Share-alike:
+ * https://creativecommons.org/licenses/by-sa/3.0/deed.en
+ * 
+ * Autumn:
+ * https://creativecommons.org/licenses/by-sa/2.0/deed.en
+ * Attribution Share-alike:
+ * https://commons.wikimedia.org/wiki/File:Autumn_in_Dresden.jpg
+ * 
+ * Mozart rendition:
+ * https://creativecommons.org/licenses/by-sa/3.0/deed.en
+ * Attribution Share-alike:
+ * https://en.wikipedia.org/wiki/File:PMLP02751-S002-02-Mozart_Requiem_Mass.ogg
+ * 
+ * Vivaldi:
+ * Spring:
+ * https://creativecommons.org/licenses/by-sa/1.0/deed.en
+ * Attribution Share-alike 1.0
+ * https://en.wikipedia.org/wiki/File:01_-_Vivaldi_Spring_mvt_1_Allegro_-_John_Harrison_violin.ogg
+ * 
+ * Summer:
+ * https://creativecommons.org/licenses/by-sa/1.0/deed.en
+ * Attribution Share-alike 1.0
+ * https://en.wikipedia.org/wiki/File:06_-_Vivaldi_Summer_mvt_3_Presto_-_John_Harrison_violin.ogg
+ * 
+ * Autumn
+ * https://creativecommons.org/licenses/by-sa/1.0/deed.en
+ * https://en.wikipedia.org/wiki/File:09_-_Vivaldi_Autumn_mvt_3_Allegro_-_John_Harrison_violin.ogg
+ * 
+ * Winter:
+ * https://creativecommons.org/licenses/by-sa/1.0/deed.en
+ * https://en.wikipedia.org/wiki/File:11_-_Vivaldi_Winter_mvt_2_Largo_-_John_Harrison_violin.ogg
+ * */
